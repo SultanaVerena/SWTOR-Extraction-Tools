@@ -1,0 +1,7 @@
+get numberOfFiles longlong
+for i = 0 < numberOfFiles
+get fileName string
+get fileSize longlong
+get fileOffset longlong
+log fileName fileOffset fileSize
+next i
