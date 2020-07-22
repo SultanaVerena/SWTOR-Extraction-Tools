@@ -62,8 +62,7 @@ def write_file(operator, filepath, objects, depsgraph, scene,
                progress=ProgressReport(),
                ):
 
-    if EXPORT_GLOBAL_MATRIX is None:
-        EXPORT_GLOBAL_MATRIX = Matrix()
+    EXPORT_GLOBAL_MATRIX = Matrix() if EXPORT_GLOBAL_MATRIX is None else EXPORT_GLOBAL_MATRIX
 
     def bx(bone, axis):
         blst = [v_dict[v][axis] for v in v_dict if bone in [
@@ -88,8 +87,7 @@ def write_file(operator, filepath, objects, depsgraph, scene,
         f_dict = {}
 
         # Collect the mesh data
-        subprogress1.enter_substeps(
-            1, "Parsing the geometry data via Blender's Data API")
+        subprogress1.enter_substeps(1, "Parsing the geometry data via Blender's Data API")
         for i, ob_main in enumerate(objects):
             obs = [(ob_main, ob_main.matrix_world)]
             for ob, ob_mat in obs:
@@ -107,12 +105,10 @@ def write_file(operator, filepath, objects, depsgraph, scene,
 
                     me.transform(EXPORT_GLOBAL_MATRIX @ ob_mat)
                     # If negative scaling, we have to invert the normals...
-                    if ob_mat.determinant() < 0.0:
-                        me.flip_normals()
+                    me.flip_normals() if ob_mat.determinant() < 0.0 else None
 
                     f_tex = len(me.uv_layers) > 0
-                    if f_tex:
-                        tex_layer = me.uv_layers.active.data[:]
+                    tex_layer = me.uv_layers.active.data[:] if f_tex else None
 
                     me_v = me.vertices[:]
 
@@ -123,10 +119,9 @@ def write_file(operator, filepath, objects, depsgraph, scene,
                     if not (len(face_index_pairs) + len(me.vertices)):
                         # Clean up
                         ob_for_convert.to_mesh_clear()
-                        pass  # continue  # Dont bother with this mesh.
+                        pass  # Dont bother with this mesh.
 
-                    if face_index_pairs:
-                        me.calc_normals_split()
+                    me.calc_normals_split() if face_index_pairs else None
 
                     me_lp = me.loops
 
@@ -167,8 +162,8 @@ def write_file(operator, filepath, objects, depsgraph, scene,
                     v_bon = {}
                     boneNames = ob.vertex_groups.keys()
                     if boneNames:
-                        # Create a dictionary keyed by face id and listing, for each vertex,
-                        # the vertex groups it belongs to
+                        # Create a dictionary keyed by face id and listing, for each vertex, and the vertex
+                        # groups it belongs to.
                         vgroupsMap = [[] for _i in range(len(me_v))]
                         for v_idx, v_ls in enumerate(vgroupsMap):
                             v_bon[v_idx] = {}
@@ -210,9 +205,9 @@ def write_file(operator, filepath, objects, depsgraph, scene,
                     tangents_to_idx = {}
                     tan_get = tangents_to_idx.get
                     loops_to_tangents = [0] * len(ctx.loops)
-                    # loop faces
+                    # Loop faces
                     for face in ctx.polygons:
-                        # loop over face loop
+                        # Loop over face loop
                         for l_idx in [ctx.loops[i] for i in face.loop_indices]:
                             tan_key = (l_idx.tangent[0], l_idx.tangent[1], l_idx.tangent[2])
                             bts_key = l_idx.bitangent_sign
@@ -230,7 +225,7 @@ def write_file(operator, filepath, objects, depsgraph, scene,
                     # UV TEXTURE COORDS
                     v_tex = {}
                     if f_tex:
-                        # in case removing some of these dont get defined.
+                        # In case removing some of these dont get defined.
                         tex = f_index = tex_index = tex_key = tex_val = tex_ls = None
 
                         tex_face_mapping = [None] * len(face_index_pairs)
@@ -241,8 +236,8 @@ def write_file(operator, filepath, objects, depsgraph, scene,
                             tex_ls = tex_face_mapping[f_index] = []
                             for tex_index, l_index in enumerate(f.loop_indices):
                                 tex = tex_layer[l_index].uv
-                                # include the vertex index in the key so we don't share UV's between vertices,
 
+                                # Include the vertex index in the key so we don't share UV's between vertices
                                 tex_key = me_lp[l_index].vertex_index, (tex[0], tex[1])
 
                                 tex_val = tex_get(tex_key)
@@ -360,10 +355,7 @@ def write_file(operator, filepath, objects, depsgraph, scene,
                 off_010 = f.tell()
                 fw(uint32(0))  # We'll populate this later
                 # Write the type of GR2 file
-                if EXPORT_HAS_CLO:
-                    fw(uint32(1))
-                else:
-                    fw(uint32(0))
+                fw(uint32(1)) if EXPORT_HAS_CLO else fw(uint32(0))
                 # Write the number of meshes
                 fw(uint16(1))
                 # Write the number of materials
@@ -371,7 +363,7 @@ def write_file(operator, filepath, objects, depsgraph, scene,
                 # If this is a skeleton file, how many bones are there?
                 fw(uint16(0))  # 0 - This isn't a skeleton file
                 # Write the number of attachments
-                fw(uint16(0))  # 0 - Until I can figure out how to handle this
+                fw(uint16(0))  # TODO Figure out how to handle attachments, 0 for now.
                 # Write 16 x 00 bytes
                 fw(uint32(0) + uint32(0) + uint32(0) + uint32(0))
 
@@ -402,7 +394,7 @@ def write_file(operator, filepath, objects, depsgraph, scene,
                 # Write 4 x 00
                 fw(uint32(0))
                 # Write the offset of the attachments section
-                fw(uint32(0))  # 0 - Until I can figure out how to handle attachments
+                fw(uint32(0))  # TODO Figure out how to handle attachments, 0 for now.
                 # Write 00 byte until pos / 16 = int
                 fw(zero_padding(f.tell()))
 
@@ -413,12 +405,8 @@ def write_file(operator, filepath, objects, depsgraph, scene,
                 # Write the mesh headers
                 # Write the offset of the mesh name
                 fw(uint32(0))  # We'll populate this later
-                # Write bitFlag 1
-                # if bones = 0 then 128 else 0
-                if boneNames:
-                    fw(uint32(0))
-                else:
-                    fw(uint32(128))
+                # Write bitFlag 1, 0 unles bones = 0, then 128
+                fw(uint32(0)) if boneNames else fw(uint32(128))
                 # Write the number of pieces that make-up the object
                 fw(uint16(num_mats))
                 # Write the number of bones used by this mesh
@@ -437,11 +425,10 @@ def write_file(operator, filepath, objects, depsgraph, scene,
                 # Write the offset of the mesh piece headers
                 fw(uint32(160))
                 # Write the offset of the mesh faces section
-                fw(uint32(160 + (num_mats * 48) +
-                          calc_padding(num_mats * 4) + (num_v * (32 if boneNames else 24))))
+                fw(uint32(160 + (num_mats * 48) + calc_padding(num_mats * 4) + (num_v * (32 if boneNames else 24))))
                 # Write the offset of the mesh bone section
-                fw(uint32(160 + (num_mats * 48) + calc_padding(num_mats *
-                          4) + (num_v * (32 if boneNames else 24)) + calc_padding(num_f * 6)))
+                fw(uint32(160 + (num_mats * 48) + calc_padding(num_mats * 4) + (num_v * (32 if boneNames else 24)) +
+                          calc_padding(num_f * 6)))
                 # Write 00 byte until pos / 16 = int
                 fw(zero_padding(f.tell()))
 
@@ -469,8 +456,7 @@ def write_file(operator, filepath, objects, depsgraph, scene,
                         fw(uint32(piece))
                         fw(uint32(piece))
                     # Write the bounding box for this piece
-                    # Need to figure out how to do this, for now use the global
-                    # bounding box and hope for the best
+                    # TODO Figure out how to do this, for now use the global bounding box and hope for the best.
                     fw(float32(min_x))  # Min X
                     fw(float32(min_y))  # Min Y
                     fw(float32(min_z))  # Min Z
@@ -490,7 +476,7 @@ def write_file(operator, filepath, objects, depsgraph, scene,
                 fw(zero_padding(f.tell()))
 
                 # Write the attachments
-                # No idea how I'ma gonna do this right now.
+                # TODO Figure out how to handle attachments.
 
                 subprogress2.step()  # 7
 
@@ -545,7 +531,7 @@ def write_file(operator, filepath, objects, depsgraph, scene,
                     fw(float32(max_x))  # Max X
                     fw(float32(max_y))  # Max Y
                     fw(float32(max_z))  # Max Z
-                else:  # This is a dynamic model, which have 1+ skeleton bones
+                else:  # This is a dynamic model, which have 1 or more skeleton bones
                     bn = 0
                     for bo in range(num_b):
                         if bo == 0:
@@ -681,12 +667,10 @@ def _write(operator, context, filepath,
         depsgraph = context.evaluated_depsgraph_get()
         scene = context.scene
 
-        # Exit edit mode before exporting, so current object states are
-        # exported properly.
+        # Exit edit mode before exporting, so current object states are exported properly.
         if bpy.ops.object.mode_set.poll():
             bpy.ops.object.mode_set(mode='OBJECT')
 
-        # object = context.selected_object
         objects = context.selected_objects
 
         full_path = ''.join(context_name)
