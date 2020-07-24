@@ -295,30 +295,31 @@ class GR2Loader():
             new_material = bpy.data.materials.new(name=material)
             new_material.use_nodes = True
 
-        # Create Template Materials
-        if "Template Material: Hair" not in bpy.data.materials:
-            template = HairMaterial("Template Material: Hair")
-            template.build()
+        if self.file_type in [0, 1]:
+            # Create Template Materials
+            if "Template Material: Hair" not in bpy.data.materials:
+                template = HairMaterial("Template Material: Hair")
+                template.build()
 
-        if "Template Material: Head" not in bpy.data.materials:
-            template = HeadMaterial("Template Material: Head")
-            template.build()
+            if "Template Material: Head" not in bpy.data.materials:
+                template = HeadMaterial("Template Material: Head")
+                template.build()
 
-        if "Template Material: Eyes" not in bpy.data.materials:
-            template = EyeMaterial("Template Material: Eyes")
-            template.build()
+            if "Template Material: Eyes" not in bpy.data.materials:
+                template = EyeMaterial("Template Material: Eyes")
+                template.build()
 
-        if "Template Material: Body Skin" not in bpy.data.materials:
-            template = BodySkinMaterial("Template Material: Body Skin")
-            template.build()
+            if "Template Material: Body Skin" not in bpy.data.materials:
+                template = BodySkinMaterial("Template Material: Body Skin")
+                template.build()
 
-        if "Template Material: Clothing" not in bpy.data.materials:
-            template = ClothingMaterial("Template Material: Clothing")
-            template.build()
+            if "Template Material: Clothing" not in bpy.data.materials:
+                template = ClothingMaterial("Template Material: Clothing")
+                template.build()
 
-        if "Template Material: Object" not in bpy.data.materials:
-            template = ObjectMaterial("Template Material: Object")
-            template.build()
+            if "Template Material: Object" not in bpy.data.materials:
+                template = ObjectMaterial("Template Material: Object")
+                template.build()
 
         # Create Meshes
         for mesh in self.meshes:
