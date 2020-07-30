@@ -367,6 +367,9 @@ def load(operator, context, filepath=""):
 
         progress.step("Done, building ...", 2)
 
+        if bpy.ops.object.mode_set.poll():
+            bpy.ops.object.mode_set(mode='OBJECT', toggle=False)
+
         main_loader.build(operator.import_collision)
 
         progress.leave_substeps("Done, finished importing: \'%s\'" % filepath)
