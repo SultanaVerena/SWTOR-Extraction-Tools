@@ -228,7 +228,8 @@ class GR2Mesh():
         obj.matrix_local = Matrix.Rotation(math.pi * 0.5, 4, [1, 0, 0])
 
         # Deselect all, then select imported model
-        bpy.ops.object.select_all(action='TOGGLE')
+        if bpy.ops.object.select_all.poll():
+            bpy.ops.object.select_all(action='DESELECT')
         obj.select = True
         bpy.context.scene.update()
         bpy.context.scene.objects.active = obj
