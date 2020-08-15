@@ -8,14 +8,14 @@ Run this script from "File->Import" menu and then load the desired GR2 model fil
 """
 
 import array
-import bpy
 import math
 import os
-
-from bpy_extras.wm_utils.progress_report import ProgressReport
-from .material_nodes import HairMaterial, HeadMaterial, EyeMaterial, BodySkinMaterial, ClothingMaterial, ObjectMaterial
-from mathutils import Matrix
 from struct import unpack
+
+import bpy
+from bpy_extras.wm_utils.progress_report import ProgressReport
+from mathutils import Matrix
+from .material_nodes import HairShader, HeadMaterial, EyeShader, SkinBShader, GarmentShader, UberShader
 
 
 def ruint8(file):  # Function to read unsigned byte
@@ -67,34 +67,42 @@ class GR2MeshPiece():
     def __init__(self, f, offset):
         f.seek(offset)
 
-        self.start_index = ruint32(f)  # Relative offset for this piece's faces
-        self.num_faces = ruint32(f)    # Number of faces used by this piece
-        self.material_id = ruint32(f)  # Mesh piece material id
-        self.piece_index = ruint32(f)  # Mesh piece enumerator (1 x uint32)
-        f.seek(0x20, 1)                # Bounding box (8 x 4 bytes)
+        self.startIndex = ruint32(f)  # Relative offset for this piece's faces
+        self.numFaces = ruint32(f)    # Number of faces used by this piece
+        self.materialId = ruint32(f)  # Mesh piece material id
+        self.pieceIndex = ruint32(f)  # Mesh piece enumerator (1 x uint32)
+        f.seek(0x20, 1)               # Bounding box (8 x 4 bytes)
 
 
 class GR2Vertex():
-    def __init__(self, f, offset, size):
+    def __init__(self, f, offset, bitFlag2):
         f.seek(offset)
 
         self.x = rfloat32(f)  # X Coordinate
         self.y = rfloat32(f)  # Y Coordinate
         self.z = rfloat32(f)  # Z Coordinate
 
-        if size in [32, 36]:
+        if bitFlag2 & 0x100:
             self.weights = [ruint8(f), ruint8(f), ruint8(f), ruint8(f)]  # Bone Weights
             self.bones = [ruint8(f), ruint8(f), ruint8(f), ruint8(f)]    # Bone Indices
 
-        if size in [24, 32, 36]:
+        if bitFlag2 & 0x02:
             self.nx = rfloat8(f)  # Normals (X)
             self.ny = rfloat8(f)  # Normals (Y)
             self.nz = rfloat8(f)  # Normals (Z)
             f.seek(0x05, 1)
+
+        if bitFlag2 & 0x10:
+            f.seek(0x04, 1)
+
+        if bitFlag2 & 0x20:
             self.u = rfloat16(f)  # Texture Map (U)
             self.v = rfloat16(f)  # Texture Map (V)
 
-        if size == 36:
+        if bitFlag2 & 0x40:
+            f.seek(0x04, 1)
+
+        if bitFlag2 & 0x80:
             f.seek(0x04, 1)
 
     def __iter__(self):
@@ -118,73 +126,71 @@ class GR2MeshBone():
         f.seek(offset)
 
         self.name = rstring(f)
-        self.bounds = [rfloat32(f) for i in range(6)]
+        self.bounds = [rfloat32(f) for _ in range(6)]
 
 
 class GR2Mesh():
     def __init__(self, f, offset):
         f.seek(offset)
 
-        self.name = rstring(f)             # Mesh name
+        self.name = rstring(f)            # Mesh name
 
         f.seek(0x04, 1)
 
-        self.num_pieces = ruint16(f)       # Number of pieces that make up this mesh
-        self.num_used_bones = ruint16(f)   # Number of bones used by this mesh
-
-        f.seek(0x02, 1)
-
-        self.vertex_size = ruint16(f)      # 12 = collision, 24 = static, 32/36 = dynamic
-        self.num_vertices = ruint32(f)     # The total number of vertices used by this mesh
-        self.num_indicies = ruint32(f)     # The total number of face indicies used by this mesh
-        self.offset_vertices = ruint32(f)  # The start address (offset) of the vertices of this mesh
-        self.offset_pieces = ruint32(f)    # The start address (offset) of the mesh piece headers
-        self.offset_indicies = ruint32(f)  # The start address (offset) of the face indices of this mesh
-        self.offset_bones = ruint32(f)     # The start address (offset) of the bone list of this mesh
+        self.numPieces = ruint16(f)       # Number of pieces that make up this mesh
+        self.numUsedBones = ruint16(f)    # Number of bones used by this mesh
+        self.bitFlag2 = ruint16(f)        # BitFlag2
+        self.vertexSize = ruint16(f)      # 12 = collision, 24 = static, 32/36 = dynamic
+        self.numVertices = ruint32(f)     # The total number of vertices used by this mesh
+        self.numIndicies = ruint32(f)     # The total number of face indicies used by this mesh
+        self.offsetVertices = ruint32(f)  # The start address (offset) of the vertices of this mesh
+        self.offsetPieces = ruint32(f)    # The start address (offset) of the mesh piece headers
+        self.offsetIndicies = ruint32(f)  # The start address (offset) of the face indices of this mesh
+        self.offsetBones = ruint32(f)     # The start address (offset) of the bone list of this mesh
 
         # Mesh pieces
-        self.pieces = [GR2MeshPiece(f, self.offset_pieces + p * 0x30) for p in range(self.num_pieces)]
+        self.pieces = [GR2MeshPiece(f, self.offsetPieces + p * 0x30) for p in range(self.numPieces)]
 
         # Vertices
-        self.vertices = [GR2Vertex(f, self.offset_vertices + v * self.vertex_size, self.vertex_size) for v in
-                         range(self.num_vertices)]
+        self.vertices = [GR2Vertex(f, self.offsetVertices + v * self.vertexSize, self.bitFlag2) for v in
+                         range(self.numVertices)]
 
         # Face indicies
-        self.faces = [GR2Face(f, self.offset_indicies + i * 0x06) for i in range(self.num_indicies // 3)]
+        self.faces = [GR2Face(f, self.offsetIndicies + i * 0x06) for i in range(self.numIndicies // 3)]
 
         # Bones
-        self.bones = [GR2MeshBone(f, self.offset_bones + b * 0x1C) for b in range(self.num_used_bones)]
+        self.bones = [GR2MeshBone(f, self.offsetBones + b * 0x1C) for b in range(self.numUsedBones)]
 
-    def build(self, mesh_loader):
+    def build(self, meshLoader):
         me = bpy.data.meshes.new(self.name)
         me.from_pydata([list(xyz) for xyz in self.vertices], [], [list(v) for v in self.faces])
 
-        if self.vertex_size in [24, 32, 36]:
+        if self.bitFlag2 & 0x20:
             # Link Materials
-            for material in mesh_loader.materials:
+            for material in meshLoader.materials:
                 me.materials.append(bpy.data.materials[material])
-            material_index = [enum for enum, piece in enumerate(self.pieces) for face in range(piece.num_faces)]
+            materialIndex = [enum for enum, piece in enumerate(self.pieces) for _ in range(piece.numFaces)]
 
             # NOTE: We store 'temp' normals in loops, since validate() may alter final mesh,
             #       we can only set custom loop normals *after* calling it.
             me.create_normals_split()
             me.uv_layers.new(do_init=False)
             for i, poly in enumerate(me.polygons):
-                loop_indices = list(poly.loop_indices)
-                for e, loop_index in enumerate(loop_indices):
+                loopIndices = list(poly.loop_indices)
+                for e, loop_index in enumerate(loopIndices):
                     v = self.vertices[list(self.faces[i])[e]]
                     me.loops[loop_index].normal = [v.nx, v.ny, v.nz]    # Loop Normals
                     me.uv_layers[0].data[loop_index].uv = [v.u, 1-v.v]  # Loop UVs
                 # Map Materials to Faces
-                poly.material_index = material_index[i]
+                poly.material_index = materialIndex[i]
 
             me.validate(clean_customdata=False)
 
             # Mesh Normals
-            custom_loop_normals = array.array('f', [0.0] * (len(me.loops) * 3))
-            me.loops.foreach_get("normal", custom_loop_normals)
+            customLoopNormals = array.array('f', [0.0] * (len(me.loops) * 3))
+            me.loops.foreach_get("normal", customLoopNormals)
             me.polygons.foreach_set("use_smooth", [True] * len(me.polygons))
-            me.normals_split_custom_set(tuple(zip(*(iter(custom_loop_normals),) * 3)))
+            me.normals_split_custom_set(tuple(zip(*(iter(customLoopNormals),) * 3)))
             me.use_auto_smooth = True
 
         # Create Blender object
@@ -192,13 +198,12 @@ class GR2Mesh():
 
         # Create Vertex Groups
         for i, v in enumerate(self.vertices):
-            if self.vertex_size in [12, 24]:
+            if not self.bitFlag2 & 0x100:
                 for b in self.bones:
-
                     if b.name not in obj.vertex_groups:
                         obj.vertex_groups.new(name=b.name)
 
-            elif self.vertex_size in [32, 36]:
+            else:
                 for w in range(4):
                     b = self.bones[v.bones[w]]
 
@@ -225,9 +230,9 @@ class GR2Bone():
         f.seek(offset)
 
         self.name = rstring(f)
-        self.parent_index = unpack(b'<i', f.read(4))[0]
+        self.parentIndex = unpack(b'<i', f.read(4))[0]
         f.seek(0x40, 1)
-        self.root_to_bone = [rfloat32(f) for floats in range(16)]
+        self.rootToBone = [rfloat32(f) for _ in range(16)]
 
 
 class GR2Loader():
@@ -244,81 +249,69 @@ class GR2Loader():
 
             f.seek(0x14)
 
-            self.file_type = ruint32(f)  # GR2 file type, 0 = geometry, 1 = geometry with .clo file, 2 = skeleton
+            self.fileType = ruint32(f)  # GR2 file type, 0 = geometry, 1 = geometry with .clo file, 2 = skeleton
 
-            self.num_meshes = ruint16(f)              # Number of meshes in this file
-            self.num_materials = ruint16(f)           # Number of materials in this file
-            self.num_bones = ruint16(f)               # Number of bones in this file
+            self.numMeshes = ruint16(f)              # Number of meshes in this file
+            self.numMaterials = ruint16(f)           # Number of materials in this file
+            self.numBones = ruint16(f)               # Number of bones in this file
 
             f.seek(0x54)
 
-            self.offset_mesh_header = ruint32(f)      # Mesh header offset address
-            self.offset_material_header = ruint32(f)  # Material header offset address
-            self.offset_bone_structure = ruint32(f)   # Bone structure offset address
-
-            # Check the size of the vertices
-            # NOTE: I wish there was a more efficient way to do this!
-            for mesh in range(self.num_meshes):
-                f.seek((self.offset_mesh_header + 0x0E) + mesh * 0x28)
-                vertex_size = ruint16(f)
-                if vertex_size not in [12, 24, 32, 36]:
-                    operator.report({'ERROR'},
-                                    "This add-on supports models that have a vertex size of 12, 24, 32 or 36 bytes. \n"
-                                    "\'%s\' has an unsupported vertex size of %i bytes."
-                                    % (self.filepath, vertex_size))
-                    return {'CANCELLED'}
+            self.offsetMeshHeader = ruint32(f)      # Mesh header offset address
+            self.offsetMaterialHeader = ruint32(f)  # Material header offset address
+            self.offsetBoneStructure = ruint32(f)   # Bone structure offset address
 
             # Meshes
-            self.meshes = [GR2Mesh(f, self.offset_mesh_header + mesh * 0x28) for mesh in range(self.num_meshes)]
+            self.meshes = [GR2Mesh(f, self.offsetMeshHeader + mesh * 0x28) for mesh in range(self.numMeshes)]
 
             # Materials
             # NOTE: I wish there was a more efficient way to do this!
             self.materials = []
-            if self.num_materials == 0:
+            if self.numMaterials == 0:
                 for mesh in self.meshes:
-                    if mesh.vertex_size in [24, 32, 36]:
-                        for enum, piece in enumerate(mesh.pieces):  # Use "mesh name".00x for name
+                    if mesh.bitFlag2 & 0x20:
+                        for enum, _ in enumerate(mesh.pieces):  # Use "mesh name".00x for name
                             self.materials.append(mesh.name + "." + str(f'{enum:03d}'))
             else:
-                f.seek(self.offset_material_header)
-                for material in range(self.num_materials):          # Use string name for name
+                f.seek(self.offsetMaterialHeader)
+                for _ in range(self.numMaterials):              # Use string name for name
                     self.materials.append(rstring(f))
 
             # Skeleton bones
             self.bones = []
-            for b in range(self.num_bones):
-                self.bones.append(GR2Bone(f, self.offset_bone_structure + b * 0x88))
+            for b in range(self.numBones):
+                self.bones.append(GR2Bone(f, self.offsetBoneStructure + b * 0x88))
 
     def build(self, import_collision=False):
         # Create Materials
         for material in self.materials:
-            new_material = bpy.data.materials.new(name=material)
-            new_material.use_nodes = True
+            newMaterial = bpy.data.materials.new(name=material)
+            newMaterial.use_nodes = True
 
-        if self.file_type in [0, 1]:
+        if self.fileType in [0, 1]:
             # Create Template Materials
-            if "Template Material: Hair" not in bpy.data.materials:
-                template = HairMaterial("Template Material: Hair")
+            if "Template: Hair Shader" not in bpy.data.materials:
+                template = HairShader("Template: Hair Shader")
                 template.build()
 
             if "Template Material: Head" not in bpy.data.materials:
                 template = HeadMaterial("Template Material: Head")
                 template.build()
 
-            if "Template Material: Eyes" not in bpy.data.materials:
-                template = EyeMaterial("Template Material: Eyes")
+            if "Template: Eye Shader" not in bpy.data.materials:
+                template = EyeShader("Template: Eye Shader")
                 template.build()
 
-            if "Template Material: Body Skin" not in bpy.data.materials:
-                template = BodySkinMaterial("Template Material: Body Skin")
+            if "Template: SkinB Shader" not in bpy.data.materials:
+                template = SkinBShader("Template: SkinB Shader")
                 template.build()
 
-            if "Template Material: Clothing" not in bpy.data.materials:
-                template = ClothingMaterial("Template Material: Clothing")
+            if "Template: Garment Shader" not in bpy.data.materials:
+                template = GarmentShader("Template: Garment Shader")
                 template.build()
 
-            if "Template Material: Object" not in bpy.data.materials:
-                template = ObjectMaterial("Template Material: Object")
+            if "Template: Uber Shader" not in bpy.data.materials:
+                template = UberShader("Template: Uber Shader")
                 template.build()
 
         # Create Meshes
@@ -328,7 +321,7 @@ class GR2Loader():
             mesh.build(self)
 
         # Create Armature
-        if self.file_type == 2 and len(self.bones) > 0:
+        if self.fileType == 2 and len(self.bones) > 0:
             bpy.ops.object.add(type='ARMATURE', enter_editmode=True)
             armature = bpy.context.object.data
             armature.name = os.path.splitext(os.path.split(self.filepath)[1])[0]
@@ -340,10 +333,10 @@ class GR2Loader():
 
             for i, b in enumerate(self.bones):
                 bone = armature.edit_bones[i]
-                if b.parent_index >= 0:
-                    bone.parent = armature.edit_bones[b.parent_index]
+                if b.parentIndex >= 0:
+                    bone.parent = armature.edit_bones[b.parentIndex]
 
-                matrix = Matrix([b.root_to_bone[u*4:u*4+4] for u in range(4)])
+                matrix = Matrix([b.rootToBone[u*4:u*4+4] for u in range(4)])
                 matrix.transpose()
                 bone.transform(matrix.inverted())
 
@@ -359,18 +352,18 @@ def load(operator, context, filepath=""):
 
         progress.enter_substeps(3, "Importing \'%s\' ..." % filepath)
 
-        main_loader = GR2Loader(filepath)
+        mainLoader = GR2Loader(filepath)
 
         progress.step("Parsing file ...", 1)
 
-        main_loader.parse(operator)
+        mainLoader.parse(operator)
 
         progress.step("Done, building ...", 2)
 
         if bpy.ops.object.mode_set.poll():
             bpy.ops.object.mode_set(mode='OBJECT', toggle=False)
 
-        main_loader.build(operator.import_collision)
+        mainLoader.build(operator.import_collision)
 
         progress.leave_substeps("Done, finished importing: \'%s\'" % filepath)
 

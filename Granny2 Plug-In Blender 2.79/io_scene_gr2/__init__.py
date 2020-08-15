@@ -12,8 +12,8 @@ from bpy_extras.io_utils import ImportHelper
 bl_info = {
     "name": "Star Wars: The Old Republic (.gr2)",
     "author": "Darth Atroxa",
-    "version": (2, 78, 0),
-    "blender": (2, 78, 0),
+    "version": (2, 79, 0),
+    "blender": (2, 79, 0),
     "location": "File > Import-Export",
     "description": "Import-Export SWTOR model with bone weights, UV's and materials",
     "support": 'COMMUNITY',

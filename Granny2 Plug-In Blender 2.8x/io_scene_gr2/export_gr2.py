@@ -1,14 +1,15 @@
 # <pep8 compliant>
 
-import bpy
 import os
+from struct import pack
+
+import bpy
 
 from mathutils import Matrix
 from bpy_extras.wm_utils.progress_report import (
     ProgressReport,
     ProgressReportSubstep,
 )
-from struct import pack
 
 
 def uint8(val):
@@ -52,8 +53,8 @@ def zero_padding(val):
 def name_compat(name):
     if name is None:
         return 'None'
-    else:
-        return name.replace(' ', '_')
+
+    return name.replace(' ', '_')
 
 
 def write_file(operator, filepath, objects, depsgraph, scene,
@@ -62,11 +63,12 @@ def write_file(operator, filepath, objects, depsgraph, scene,
                progress=ProgressReport(),
                ):
 
-    EXPORT_GLOBAL_MATRIX = Matrix() if EXPORT_GLOBAL_MATRIX is None else EXPORT_GLOBAL_MATRIX
+    if EXPORT_GLOBAL_MATRIX is None:
+        EXPORT_GLOBAL_MATRIX = Matrix()
 
     def bx(bone, axis):
         blst = [v_dict[v][axis] for v in v_dict if bone in [
-                v_dict[v]["B1"], v_dict[v]["B2"], v_dict[v]["B3"], v_dict[v]["B4"]]]
+            v_dict[v]["B1"], v_dict[v]["B2"], v_dict[v]["B3"], v_dict[v]["B4"]]]
         return [0] if len(blst) == 0 else blst
 
     with ProgressReportSubstep(progress, 2, "GR2 Export path: \'%s\'" % filepath,
@@ -87,7 +89,8 @@ def write_file(operator, filepath, objects, depsgraph, scene,
         f_dict = {}
 
         # Collect the mesh data
-        subprogress1.enter_substeps(1, "Parsing the geometry data via Blender's Data API")
+        subprogress1.enter_substeps(
+            1, "Parsing the geometry data via Blender's Data API")
         for i, ob_main in enumerate(objects):
             obs = [(ob_main, ob_main.matrix_world)]
             for ob, ob_mat in obs:
@@ -105,7 +108,8 @@ def write_file(operator, filepath, objects, depsgraph, scene,
 
                     me.transform(EXPORT_GLOBAL_MATRIX @ ob_mat)
                     # If negative scaling, we have to invert the normals...
-                    me.flip_normals() if ob_mat.determinant() < 0.0 else None
+                    if ob_mat.determinant() < 0.0:
+                        me.flip_normals()
 
                     f_tex = len(me.uv_layers) > 0
                     tex_layer = me.uv_layers.active.data[:] if f_tex else None
@@ -113,15 +117,16 @@ def write_file(operator, filepath, objects, depsgraph, scene,
                     me_v = me.vertices[:]
 
                     # Make our own list so it can be sorted to reduce context switching
-                    face_index_pairs = [(face, index) for index, face in enumerate(me.polygons)]
+                    face_index_pairs = [(face, index)
+                                        for index, face in enumerate(me.polygons)]
 
                     # Make sure there is something to write
-                    if not (len(face_index_pairs) + len(me.vertices)):
+                    if not len(face_index_pairs) + len(me.vertices):
                         # Clean up
                         ob_for_convert.to_mesh_clear()
-                        pass  # Dont bother with this mesh.
 
-                    me.calc_normals_split() if face_index_pairs else None
+                    if face_index_pairs:
+                        me.calc_normals_split()
 
                     me_lp = me.loops
 
@@ -136,8 +141,9 @@ def write_file(operator, filepath, objects, depsgraph, scene,
                             face.material_index, []).append(face.index)
 
                     m_idx = {}
-                    for i in range(num_mats):
-                        m_idx[i] = len(face_mats[i]) if i in face_mats.keys() else 0
+                    for j in range(num_mats):
+                        m_idx[j] = len(
+                            face_mats[j]) if j in face_mats.keys() else 0
 
                     # Mesh Name
                     obnamestring = name_compat(ob.name)
@@ -184,7 +190,8 @@ def write_file(operator, filepath, objects, depsgraph, scene,
                     loops_to_normals = [0] * len(me_lp)
                     for f, f_index in face_index_pairs:
                         for l_idx in f.loop_indices:
-                            nor_key = (me_lp[l_idx].normal[0], me_lp[l_idx].normal[1], me_lp[l_idx].normal[2])
+                            nor_key = (
+                                me_lp[l_idx].normal[0], me_lp[l_idx].normal[1], me_lp[l_idx].normal[2])
                             nor_val = nor_get(nor_key)
                             if nor_val is None:
                                 nor_val = normals_to_idx[nor_key] = nor_unique_count
@@ -209,7 +216,8 @@ def write_file(operator, filepath, objects, depsgraph, scene,
                     for face in ctx.polygons:
                         # Loop over face loop
                         for l_idx in [ctx.loops[i] for i in face.loop_indices]:
-                            tan_key = (l_idx.tangent[0], l_idx.tangent[1], l_idx.tangent[2])
+                            tan_key = (
+                                l_idx.tangent[0], l_idx.tangent[1], l_idx.tangent[2])
                             bts_key = l_idx.bitangent_sign
                             tan_val = tan_get(tan_key)
                             if tan_val is None:
@@ -238,7 +246,8 @@ def write_file(operator, filepath, objects, depsgraph, scene,
                                 tex = tex_layer[l_index].uv
 
                                 # Include the vertex index in the key so we don't share UV's between vertices
-                                tex_key = me_lp[l_index].vertex_index, (tex[0], tex[1])
+                                tex_key = me_lp[l_index].vertex_index, (
+                                    tex[0], tex[1])
 
                                 tex_val = tex_get(tex_key)
                                 if tex_val is None:
@@ -290,7 +299,8 @@ def write_file(operator, filepath, objects, depsgraph, scene,
                             v_dict[v.index]["Tx"] = v_tan[loops_to_tangents[li]][0]
                             v_dict[v.index]["Ty"] = v_tan[loops_to_tangents[li]][1]
                             v_dict[v.index]["Tz"] = v_tan[loops_to_tangents[li]][2]
-                            v_dict[v.index]["Ts"] = int(0 - v_bts[loops_to_tangents[li]])
+                            v_dict[v.index]["Ts"] = int(
+                                0 - v_bts[loops_to_tangents[li]])
                             v_dict[v.index]["U"] = v_tex[tex_face_mapping[f_index][vi]][1][0]
                             v_dict[v.index]["V"] = v_tex[tex_face_mapping[f_index][vi]][1][1]
 
@@ -310,7 +320,8 @@ def write_file(operator, filepath, objects, depsgraph, scene,
 
                     # List of keys in v_dict
                     if not boneNames:
-                        keys = ["Nx", "Ny", "Nz", "Ns", "Tx", "Ty", "Tz", "Ts", "U", "V"]
+                        keys = ["Nx", "Ny", "Nz", "Ns",
+                                "Tx", "Ty", "Tz", "Ts", "U", "V"]
                     else:
                         keys = ["W1", "W2", "W3", "W4", "B1", "B2", "B3", "B4",
                                 "Nx", "Ny", "Nz", "Ns", "Tx", "Ty", "Tz", "Ts", "U", "V"]
@@ -319,12 +330,18 @@ def write_file(operator, filepath, objects, depsgraph, scene,
                     num_v = len(v_dict)
                     num_f = len(f_dict)
 
-                    min_x = min([[iv for ik, iv in ov.items()][0] for ok, ov in v_dict.items()])
-                    min_y = min([[iv for ik, iv in ov.items()][1] for ok, ov in v_dict.items()])
-                    min_z = min([[iv for ik, iv in ov.items()][2] for ok, ov in v_dict.items()])
-                    max_x = max([[iv for ik, iv in ov.items()][0] for ok, ov in v_dict.items()])
-                    max_y = max([[iv for ik, iv in ov.items()][1] for ok, ov in v_dict.items()])
-                    max_z = max([[iv for ik, iv in ov.items()][2] for ok, ov in v_dict.items()])
+                    min_x = min([[iv for ik, iv in ov.items()][0]
+                                 for ok, ov in v_dict.items()])
+                    min_y = min([[iv for ik, iv in ov.items()][1]
+                                 for ok, ov in v_dict.items()])
+                    min_z = min([[iv for ik, iv in ov.items()][2]
+                                 for ok, ov in v_dict.items()])
+                    max_x = max([[iv for ik, iv in ov.items()][0]
+                                 for ok, ov in v_dict.items()])
+                    max_y = max([[iv for ik, iv in ov.items()][1]
+                                 for ok, ov in v_dict.items()])
+                    max_z = max([[iv for ik, iv in ov.items()][2]
+                                 for ok, ov in v_dict.items()])
 
                     # clean up
                     ob_for_convert.to_mesh_clear()
@@ -363,7 +380,8 @@ def write_file(operator, filepath, objects, depsgraph, scene,
                 # If this is a skeleton file, how many bones are there?
                 fw(uint16(0))  # 0 - This isn't a skeleton file
                 # Write the number of attachments
-                fw(uint16(0))  # TODO Figure out how to handle attachments, 0 for now.
+                # TODO Figure out how to handle attachments, 0 for now.
+                fw(uint16(0))
                 # Write 16 x 00 bytes
                 fw(uint32(0) + uint32(0) + uint32(0) + uint32(0))
 
@@ -394,7 +412,8 @@ def write_file(operator, filepath, objects, depsgraph, scene,
                 # Write 4 x 00
                 fw(uint32(0))
                 # Write the offset of the attachments section
-                fw(uint32(0))  # TODO Figure out how to handle attachments, 0 for now.
+                # TODO Figure out how to handle attachments, 0 for now.
+                fw(uint32(0))
                 # Write 00 byte until pos / 16 = int
                 fw(zero_padding(f.tell()))
 
@@ -425,7 +444,8 @@ def write_file(operator, filepath, objects, depsgraph, scene,
                 # Write the offset of the mesh piece headers
                 fw(uint32(160))
                 # Write the offset of the mesh faces section
-                fw(uint32(160 + (num_mats * 48) + calc_padding(num_mats * 4) + (num_v * (32 if boneNames else 24))))
+                fw(uint32(160 + (num_mats * 48) + calc_padding(num_mats *
+                                                               4) + (num_v * (32 if boneNames else 24))))
                 # Write the offset of the mesh bone section
                 fw(uint32(160 + (num_mats * 48) + calc_padding(num_mats * 4) + (num_v * (32 if boneNames else 24)) +
                           calc_padding(num_f * 6)))

@@ -7,7 +7,7 @@ This script defines the material types used by Star Wars: The Old Republic model
 import bpy
 
 
-class HairMaterial():
+class HairShader():
     def __init__(self, material):
         self.material = bpy.data.materials.new(name=material)
         self.material.use_nodes = True
@@ -427,7 +427,7 @@ class HeadMaterial():
         self.LinkNodes()
 
 
-class EyeMaterial():
+class EyeShader():
     def __init__(self, material):
         self.material = bpy.data.materials.new(name=material)
         self.material.use_nodes = True
@@ -651,7 +651,7 @@ class EyeMaterial():
         self.LinkNodes()
 
 
-class BodySkinMaterial():
+class SkinBShader():
     def __init__(self, material):
         self.material = bpy.data.materials.new(name=material)
         self.material.use_nodes = True
@@ -861,7 +861,7 @@ class BodySkinMaterial():
         self.LinkNodes()
 
 
-class ClothingMaterial():
+class GarmentShader():
     def __init__(self, material):
         self.material = bpy.data.materials.new(name=material)
         self.material.use_nodes = True
@@ -911,6 +911,7 @@ class ClothingMaterial():
         GroupOutput = NodeGroup.nodes.new('NodeGroupOutput')
         GroupOutput.location = (301, 103)
         NodeGroup.outputs.new(type='NodeSocketColor', name='Color')
+        NodeGroup.outputs.new(type='NodeSocketFloat', name='Metallic')
 
         # Create the Separate RGB nodes
         SeparateRGB1 = NodeGroup.nodes.new(type='ShaderNodeSeparateRGB')
@@ -939,6 +940,7 @@ class ClothingMaterial():
         NodeGroup.links.new(GroupInput.outputs[5], SeparateRGB1.inputs[0])
         NodeGroup.links.new(SeparateRGB1.outputs[0], MixRGB1.inputs[0])
         NodeGroup.links.new(SeparateRGB1.outputs[1], MixRGB2.inputs[0])
+        NodeGroup.links.new(SeparateRGB1.outputs[2], GroupOutput.inputs[1])
         NodeGroup.links.new(SeparateRGB2.outputs[0], HSV.inputs[0])
         NodeGroup.links.new(SeparateRGB2.outputs[1], HSV.inputs[1])
         NodeGroup.links.new(SeparateRGB2.outputs[2], HSV.inputs[2])
@@ -946,7 +948,7 @@ class ClothingMaterial():
         NodeGroup.links.new(MixRGB2.outputs[0], HSV.inputs[4])
         NodeGroup.links.new(HSV.outputs[0], GroupOutput.inputs[0])
 
-        # Link the RotationMap node group to the material
+        # Link the DiffuseMap node group to the material
         link = self.material.node_tree.nodes.new(type='ShaderNodeGroup')
         link.node_tree = NodeGroup
         link.name = link.label = "DiffuseMap"
@@ -1058,6 +1060,7 @@ class ClothingMaterial():
 
         # Link Node Groups to PBDSF node
         links.new(nodes['DiffuseMap'].outputs[0], nodes['Principled BSDF'].inputs[0])
+        links.new(nodes['DiffuseMap'].outputs[1], nodes['Principled BSDF'].inputs[4])
         links.new(nodes['GlossMap'].outputs[0], nodes['Principled BSDF'].inputs[5])
         links.new(nodes['RotationMap'].outputs[0], nodes['Principled BSDF'].inputs[17])
         links.new(nodes['RotationMap'].outputs[1], nodes['Principled BSDF'].inputs[19])
@@ -1070,7 +1073,7 @@ class ClothingMaterial():
         self.LinkNodes()
 
 
-class ObjectMaterial():
+class UberShader():
     def __init__(self, material):
         self.material = bpy.data.materials.new(name=material)
         self.material.use_nodes = True
